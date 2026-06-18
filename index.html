@@ -152,7 +152,8 @@
   <div class="btn-group">
     <button class="btn btn-blue active" id="btnChecklist" onclick="mostrar('checklist')">📋 Checklist</button>
     <button class="btn btn-blue" id="btnInforme" onclick="mostrar('informe')">📄 Informe</button>
-    <button class="btn btn-green" id="btnPDF" onclick="generarPDF()">⬇️ Descargar PDF</button>
+    <button class="btn btn-green" id="btnPDF" onclick="generarPDF('download')">⬇️ Guardar PDF</button>
+    <button class="btn btn-gmail" id="btnGmail" onclick="generarPDF('gmail')">✉️ Enviar por Gmail</button>
   </div>
 </div>
 
@@ -552,7 +553,7 @@ function buildInforme(){
 }
 
 // ── GENERAR PDF ───────────────────────────────────────────────
-async function generarPDF(){
+async function generarPDF(modo){
   const btn=document.getElementById("btnPDF");
   btn.disabled=true; btn.textContent="⏳ Generando...";
   await new Promise(r=>setTimeout(r,80));
@@ -814,21 +815,37 @@ async function generarPDF(){
     const blob=new Blob([pdfBytes],{type:"application/pdf"});
     const url=URL.createObjectURL(blob);
     
-    // Detectar iOS
-    const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
-    if(isIOS){
-      // En iOS: abrir en nueva pestaña, usuario comparte desde ahí
-      const a=document.createElement("a");
-      a.href=url; a.target="_blank"; a.rel="noopener";
-      document.body.appendChild(a); a.click(); document.body.removeChild(a);
-      setTimeout(()=>alert("PDF abierto. Usá el botón Compartir (□↑) para enviarlo por Gmail o guardarlo."),800);
+    const nombreEmp=(emp||"informe").replace(/\s+/g,"_");
+    const fileName=`Visita_Seguridad_${nombreEmp}_${fe||"sin_fecha"}.pdf`;
+
+    if(modo==="gmail"){
+      // Convertir PDF a base64 para adjuntar
+      const reader=new FileReader();
+      reader.onload=async function(){
+        const b64=reader.result.split(",")[1];
+        // Usar Web Share API si está disponible (iOS 15+)
+        if(navigator.share && navigator.canShare && navigator.canShare({files:[new File([blob],fileName,{type:"application/pdf"})]})){
+          try{
+            await navigator.share({
+              title:"Visita de Seguridad - "+emp,
+              text:"Informe de Visita de Seguridad\nTécnico: "+tec+"\nEmpresa: "+emp+"\nFecha: "+feDisp,
+              files:[new File([blob],fileName,{type:"application/pdf"})]
+            });
+          }catch(e){
+            if(e.name!=="AbortError") abrirGmailFallback(tec,emp,feDisp,url,fileName);
+          }
+        }else{
+          abrirGmailFallback(tec,emp,feDisp,url,fileName);
+        }
+      };
+      reader.readAsDataURL(blob);
     }else{
-      const nombreEmp=(emp||"informe").replace(/\s+/g,"_");
+      // Descarga normal
       const a=document.createElement("a");
-      a.href=url; a.download=`Visita_Seguridad_${nombreEmp}_${fe||"sin_fecha"}.pdf`;
+      a.href=url; a.download=fileName;
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(()=>URL.revokeObjectURL(url),5000);
     }
-    setTimeout(()=>URL.revokeObjectURL(url),5000);
   }catch(e){ console.error(e); alert("Error al generar el PDF: "+e.message); }
   btn.disabled=false; btn.textContent="⬇️ Descargar PDF";
 }
@@ -956,6 +973,47 @@ function buildPDF(pages,W,H){
   const result=new Uint8Array(total); let pos=0;
   parts.forEach(p=>{ result.set(p,pos); pos+=p.length; });
   return result;
+}
+
+
+function abrirGmailFallback(tec,emp,fecha,pdfUrl,fileName){
+  // Abrir PDF primero para que el usuario pueda guardarlo
+  const a=document.createElement("a");
+  a.href=pdfUrl; a.target="_blank"; a.rel="noopener";
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  // Luego mostrar modal con instrucciones
+  mostrarModalCompartir(tec,emp,fecha,pdfUrl,fileName);
+}
+
+function mostrarModalCompartir(tec,emp,fecha,pdfUrl,fileName){
+  const prev=document.getElementById("modalCompartir");
+  if(prev)prev.remove();
+  const m=document.createElement("div");
+  m.id="modalCompartir";
+  m.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9999;display:flex;align-items:flex-end;justify-content:center;";
+  m.innerHTML=`
+    <div style="background:#fff;border-radius:20px 20px 0 0;padding:24px 20px 40px;width:100%;max-width:480px">
+      <div style="width:36px;height:4px;background:#e2e8f0;border-radius:99px;margin:0 auto 18px"></div>
+      <div style="font-size:36px;text-align:center;margin-bottom:10px">📧</div>
+      <div style="font-size:17px;font-weight:700;color:#1e293b;text-align:center;margin-bottom:6px">PDF generado</div>
+      <div style="font-size:13px;color:#64748b;text-align:center;margin-bottom:20px;line-height:1.6">
+        El PDF se abrió en una nueva pestaña.<br>Desde ahí podés compartirlo directamente.
+      </div>
+      <div style="background:#f8fafc;border-radius:12px;padding:14px;margin-bottom:16px">
+        <div style="font-size:11px;font-weight:700;color:#3b82f6;margin-bottom:8px">📲 PARA ENVIAR POR GMAIL:</div>
+        <div style="font-size:13px;color:#475569;line-height:2">
+          1. En la pestaña del PDF tocá <strong>□↑ Compartir</strong><br>
+          2. Elegí <strong>Gmail</strong><br>
+          3. El PDF se adjunta solo ✓
+        </div>
+      </div>
+      <button onclick="document.getElementById('modalCompartir').remove()"
+        style="width:100%;padding:14px;border-radius:12px;background:#1e3a5f;border:none;color:#fff;font-weight:700;font-size:15px;cursor:pointer">
+        Entendido
+      </button>
+    </div>`;
+  m.addEventListener("click",e=>{if(e.target===m)m.remove();});
+  document.body.appendChild(m);
 }
 
 
