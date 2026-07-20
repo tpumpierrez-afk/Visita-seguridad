@@ -49,8 +49,12 @@
   .obs-del{background:none;border:none;color:#ef4444;cursor:pointer;font-size:12px;font-weight:600}
   textarea.input{resize:vertical}
   .foto-grid{display:flex;flex-wrap:wrap;gap:8px;margin-top:9px}
-  .foto-thumb{position:relative;width:68px;height:68px}
-  .foto-thumb img{width:68px;height:68px;object-fit:cover;border-radius:8px;border:1px solid #e2e8f0}
+  .foto-thumb{position:relative;width:var(--foto-size,80px);height:var(--foto-size,80px)}
+  .foto-thumb img{width:var(--foto-size,80px);height:var(--foto-size,80px);object-fit:cover;border-radius:8px;border:1px solid #e2e8f0}
+  .foto-slider-wrap{padding:10px 14px 2px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #f1f5f9}
+  .foto-slider-wrap label{font-size:11px;color:#64748b;font-weight:600;white-space:nowrap}
+  .foto-slider-wrap input[type=range]{flex:1;accent-color:#3b82f6;height:4px}
+  .foto-slider-val{font-size:11px;color:#3b82f6;font-weight:700;min-width:36px;text-align:right}
   .foto-del{position:absolute;top:-5px;right:-5px;width:18px;height:18px;border-radius:50%;background:#ef4444;border:none;color:white;font-size:11px;cursor:pointer;font-weight:700;line-height:18px;text-align:center}
   .foto-add{width:68px;height:68px;border-radius:8px;border:2px dashed #cbd5e1;background:#f8fafc;color:#94a3b8;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:10px;font-weight:600;gap:3px}
   #vistaChecklist{display:block}
@@ -194,6 +198,11 @@
     <div class="card-header" style="justify-content:space-between">
       <span>📝 Observaciones</span>
       <button class="btn btn-blue" style="font-size:12px;padding:5px 12px" onclick="addObs()">+ Agregar observación</button>
+    </div>
+    <div class="foto-slider-wrap">
+      <label>📐 Tamaño fotos</label>
+      <input type="range" id="fotoSlider" min="60" max="220" value="80" step="10" oninput="cambiarTamFoto(this.value)">
+      <span class="foto-slider-val" id="fotoSliderVal">80px</span>
     </div>
     <div id="obsContainer"></div>
   </div>
@@ -415,6 +424,14 @@ function addFotos(obsId,input){
 }
 
 function delFoto(obsId,fi){ const obs=observaciones.find(o=>o.id===obsId); if(obs){ obs.fotos.splice(fi,1); renderFotos(obsId); } }
+
+let fotoSize = 80; // px - controlled by slider
+
+function cambiarTamFoto(val){
+  fotoSize = parseInt(val);
+  document.getElementById('fotoSliderVal').textContent = val+'px';
+  document.documentElement.style.setProperty('--foto-size', val+'px');
+}
 
 function renderFotos(obsId){
   const obs=observaciones.find(o=>o.id===obsId);
@@ -782,17 +799,21 @@ async function generarPDF(modo){
         y += boxH+8;
         // Photos
         if(obsImgs[idx] && obsImgs[idx].length>0){
+          // Use fotoSize for PDF photos (scaled to PDF coords)
+          const pdfFotoW = Math.round(fotoSize * 1.0);
+          const pdfFotoH = Math.round(fotoSize * 0.78);
+          const pdfFotoGap = pdfFotoW + 8;
           let fx=ML;
           obsImgs[idx].forEach(img=>{
             if(!img)return;
-            chk(110);
-            ctx.drawImage(img,fx,y,100,78);
+            chk(pdfFotoH+24);
+            ctx.drawImage(img,fx,y,pdfFotoW,pdfFotoH);
             ctx.strokeStyle='#e2e8f0'; ctx.lineWidth=1;
-            ctx.strokeRect(fx,y,100,78);
-            fx+=108;
-            if(fx+100>PW-MR){fx=ML; y+=86;}
+            ctx.strokeRect(fx,y,pdfFotoW,pdfFotoH);
+            fx+=pdfFotoGap;
+            if(fx+pdfFotoW>PW-MR){fx=ML; y+=pdfFotoH+8;}
           });
-          y+=86;
+          y+=pdfFotoH+8;
         }
       });
     }
